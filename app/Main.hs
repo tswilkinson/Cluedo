@@ -2,6 +2,7 @@ module Main (main) where
 
 import Data.Char
 import Data.List(findIndex,findIndices)
+import Control.Monad(forM_)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Strict
 import qualified Data.Map.Strict as Map
@@ -48,9 +49,11 @@ main = do
     if firstplayer >= 1 && firstplayer <= 6 then return () else error "bad first player"
 
     let emptyStateObject = SO Map.empty
-                              Map.empty
-                              Map.empty
-                              Map.empty
+                              (Map.fromList $ [((1,i),0) | i <- [1..6]]
+                                       ++ [((2,i),0) | i <- [1..6]]
+                                       ++ [((3,i),0) | i <- [1..9]])
+                              (Map.fromList [(i,(0,0)) | i <- [1..6]])
+                              (Map.fromList [(1,False),(2,False),(3,False)])
                               Map.empty
                               firstplayer
     so <- execStateT (addToGrid [(gp1,True),(gp2,True),(gp3,True)]) emptyStateObject
@@ -153,25 +156,117 @@ addToGrid' ((m,n,l),True) = do
 
 loop :: StateT StateObject IO ()
 loop = do
-    SO _ _ _ _ _ n <- get
+    SO g _ _ _ _ n <- get
     case n of
         1 -> do
+            let f :: Maybe Bool -> Char
+                f Nothing = '-'
+                f (Just True) = 'Y'
+                f (Just False) = 'N'
+
+                block1 = [[f (Map.lookup (1,i,j) g) | j <- [1..6]] | i <- [1..6]]
+                block2 = [[f (Map.lookup (2,i,j) g) | j <- [1..6]] | i <- [1..6]]
+                block3 = [[f (Map.lookup (3,i,j) g) | j <- [1..6]] | i <- [1..9]]
+
+            lift $ do forM_ block1 putStrLn
+                      putStrLn ""
+                      forM_ block2 putStrLn
+                      putStrLn ""
+                      forM_ block3 putStrLn
+                      putStrLn ""
+
             l1 <- lift $ do putStrLn "Your turn. What is your accusation?"
                             getLine
             let (a,b,c) = case l1 of
-                (x:y:z:_) -> (digitToInt x,digitToInt y,digitToInt z)
-                _ -> error "bad accusation"
+                    (x:y:z:_) -> (digitToInt x,digitToInt y,digitToInt z)
+                    _ -> error "bad accusation"
 
             l2 <- lift $ do putStrLn "Which player responded?"
                             getLine
             let player = case l2 of
-                (x:_) -> digitToInt x
-                _ -> error "bad player"
+                    (x:_) -> digitToInt x
+                    _ -> error "bad player"
 
             l3 <- lift $ do putStrLn "Which block did they show you?"
                             getLine
             let block = case l3 of
-                (x:_) -> digitToInt x
-                _ -> error "bad block"
+                    (x:_) -> digitToInt x
+                    _ -> error "bad block"
 
-            addToGrid [(1,a,i)
+            addToGrid [((1,a,i),False) | i <- [2..player-1]]
+            addToGrid [((2,b,i),False) | i <- [2..player-1]]
+            addToGrid [((3,c,i),False) | i <- [2..player-1]]
+
+            case block of
+                1 -> addToGrid [((1,a,player),True)]
+                2 -> addToGrid [((2,b,player),True)]
+                3 -> addToGrid [((3,c,player),True)]
+                _ -> error "also bad block"
+
+            modify (\(SO gr ro co su di _) -> SO gr ro co su di 2)
+            
+            lift $ putStrLn ""
+            loop
+        _ -> do
+            l1 <- lift $ do putStrLn $ "What is player " ++ show n ++ "'s accusation?"
+                            getLine
+            let (a,b,c) = case l1 of
+                    (x:y:z:_) -> (digitToInt x,digitToInt y,digitToInt z)
+                    _ -> error "bad accusation"
+
+            l2 <- lift $ do putStrLn "Which player responded?"
+                            getLine
+            let player = case l2 of
+                    (x:_) -> digitToInt x
+                    _ -> error "bad player"
+
+                non_respondents = if player > n then [n+1..player-1]
+                                                else [n+1..6]++[1..player-1]
+
+            addToGrid [((1,a,i),False) | i <- non_respondents]
+            addToGrid [((2,b,i),False) | i <- non_respondents]
+            addToGrid [((3,c,i),False) | i <- non_respondents]
+
+            SO g' _ _ _ _ _ <- get
+
+            let addTwo :: GridRow -> GridRow -> StateObject -> StateObject
+                addTwo gr1 gr2 (SO gr ro co su di tu) = SO gr ro co su (Map.alter go player di) tu
+                    where go :: Maybe [Disjunction] -> Maybe [Disjunction]
+                          go Nothing = Just [Two gr1 gr2]
+                          go (Just ds) = Just (Two gr1 gr2:ds)
+
+                addThree :: GridRow -> GridRow -> GridRow -> StateObject -> StateObject
+                addThree gr1 gr2 gr3 (SO gr ro co su di tu) = SO gr ro co su (Map.alter go player di) tu
+                    where go :: Maybe [Disjunction] -> Maybe [Disjunction]
+                          go Nothing = Just [Three gr1 gr2 gr3]
+                          go (Just ds) = Just (Three gr1 gr2 gr3:ds)
+
+            case Map.lookup (1,a,player) g' of
+                Nothing -> case Map.lookup (2,b,player) g' of
+                    Nothing -> case Map.lookup (3,c,player) g' of
+                        Nothing -> modify $ addThree (1,a) (2,b) (3,c)
+                        Just True -> return ()
+                        Just False -> modify $ addTwo (1,a) (2,b)
+                    Just True -> return ()
+                    Just False -> case Map.lookup (3,c,player) g' of
+                        Nothing -> modify $ addTwo (1,a) (3,c)
+                        Just True -> return ()
+                        Just False -> addToGrid [((1,a,player),True)]
+                Just True -> return ()
+                Just False -> case Map.lookup (2,b,player) g' of
+                    Nothing -> case Map.lookup (3,c,player) g' of
+                        Nothing -> modify $ addTwo (2,b) (3,c)
+                        Just True -> return ()
+                        Just False -> addToGrid [((2,b,player),True)]
+                    Just True -> return ()
+                    Just False -> case Map.lookup (3,c,player) g' of
+                        Nothing -> addToGrid [((3,c,player),True)]
+                        Just True -> return ()
+                        Just False -> error "paradox"
+
+            case n of
+                6 -> modify (\(SO gr ro co su di _) -> SO gr ro co su di 1)
+                _ -> modify (\(SO gr ro co su di _) -> SO gr ro co su di (n+1))
+
+            lift $ putStrLn ""
+            loop
