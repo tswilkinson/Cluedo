@@ -18,54 +18,51 @@ data StateObject = SO (Map.Map GridPosition Bool)
                       (Map.Map GridRow Int)
                       (Map.Map GridColumn (Int,Int))
                       (Map.Map GridBlock Bool)
-                      (Map.Map GridColumn [Disjunction])
-                      Int
 
 main :: IO ()
 main = do
     putStrLn "please enter your first card:"
     l1 <- getLine
     let gp1 = case l1 of
-                  (x:y:_)   -> (digitToInt x,digitToInt y,1)
-                  _         -> error "invalid first card"
+        (x:y:_)   -> (digitToInt x,digitToInt y,1)
+        _         -> error "invalid first card"
 
     putStrLn "please enter your second card:"
     l2 <- getLine
     let gp2 = case l2 of
-                  (x:y:_)   -> (digitToInt x,digitToInt y,1)
-                  _         -> error "invalid second card"
+        (x:y:_)   -> (digitToInt x,digitToInt y,1)
+        _         -> error "invalid second card"
 
     putStrLn "please enter your third card:"
     l3 <- getLine
     let gp3 = case l3 of
-                  (x:y:_)   -> (digitToInt x,digitToInt y,1)
-                  _         -> error "invalid third card"
+        (x:y:_)   -> (digitToInt x,digitToInt y,1)
+        _         -> error "invalid third card"
     
     putStrLn "which player accuses first?"
     l4 <- getLine
     let firstplayer = case l4 of
-                          (x:_) -> digitToInt x
-                          _     -> error "invalid first player"
+        (x:_) -> digitToInt x
+        _     -> error "invalid first player"
     if firstplayer >= 1 && firstplayer <= 6 then return () else error "bad first player"
 
     let emptyStateObject = SO Map.empty
-                              (Map.fromList $ [((1,i),0) | i <- [1..6]]
-                                       ++ [((2,i),0) | i <- [1..6]]
-                                       ++ [((3,i),0) | i <- [1..9]])
-                              (Map.fromList [(i,(0,0)) | i <- [1..6]])
-                              (Map.fromList [(1,False),(2,False),(3,False)])
-                              Map.empty
-                              firstplayer
-    so <- execStateT (addToGrid [(gp1,True),(gp2,True),(gp3,True)]) emptyStateObject
+            (Map.fromList $ [((1,i),0) | i <- [1..6]]
+                ++ [((2,i),0) | i <- [1..6]]
+                ++ [((3,i),0) | i <- [1..9]])
+            (Map.fromList [(i,(0,0)) | i <- [1..6]])
+            (Map.fromList [(1,False),(2,False),(3,False)])
+            Map.empty
+    so <- execStateT (addToGrid [(gp1,True),(gp2,True),(gp3,True)]) ([emptyStateObject],firstplayer)
     evalStateT loop so
 
-addToGrid :: [(GridPosition,Bool)] -> StateT StateObject IO ()
+addToGrid :: [(GridPosition,Bool)] -> StateT ([StateObject],Int) IO ()
 addToGrid [] = return ()
 addToGrid (x:xs) = do
     ys <- addToGrid' x
     addToGrid (ys++xs)
 
-addToGrid' :: (GridPosition,Bool) -> StateT StateObject IO [(GridPosition,Bool)]
+addToGrid' :: (GridPosition,Bool) -> StateT ([StateObject],Int) IO [(GridPosition,Bool)]
 addToGrid' ((m,n,l),False) = do
     SO grid rowcounts columncounts successes disjunctions turn <- get
     let (oldv,grid') = Map.insertLookupWithKey (\_ a _ -> a) (m,n,l) False grid
@@ -154,7 +151,37 @@ addToGrid' ((m,n,l),True) = do
             return $ ys1 ++ ys2
         _ -> return []
 
-loop :: StateT StateObject IO ()
+addToGrid'' :: (GridPosition,Bool) -> StateObject -> Maybe (StateObject,[(GridPosition,Bool)])
+addToGrid'' (gp,False) (SO grid rowcounts columncounts successes) = 
+    let (oldv,grid') = Map.insertLookupWithKey (\_ a _ -> a) (m,n,l) False grid in
+        case oldv of
+            Nothing -> do
+                let (newrc,rowcounts') = Map.updateLookupWithKey (\_ a -> Just (a+1)) (m,n) rowcounts
+                    (successes',ys1) = case newrc of
+                        Just 6 -> (Map.insert m True successes,[])
+                        Just 5 -> case Map.lookup m successes of
+                            Just True -> case findIndex (\i -> Map.notMember (m,n,i) grid') [1..6] of
+                                 Just i -> (successes,[((m,n,i+1),True)])
+                                 Nothing -> error "weird"
+                            _ -> (successes,[])
+                        _ -> (successes,[])
+
+                    (newcc,columncounts') = Map.updateLookupWithKey (\_ (p,q) -> Just (p,q+1)) l columncounts
+                    ys2 = case newcc of
+                        Just (p,18) -> if p == 3 then [] else
+                            let ys21 = map (\i -> ((1,i+1,l),True))
+                                           (findIndices (\i -> Map.notMember (1,i,l) grid') [1..6])
+                                ys22 = map (\i -> ((2,i+1,l),True))
+                                           (findIndices (\i -> Map.notMember (2,i,l) grid') [1..6])
+                                ys23 = map (\i -> ((3,i+1,l),True)) 
+                                           (findIndices (\i -> Map.notMember (3,i,l) grid') [1..9])
+                             in (ys21 ++ ys22 ++ ys23)
+                        _ -> []
+                 in ([SO grid' rowcounts' columncounts' successes'],ys1++ys2)
+addToGrid'' (gp,True) (SO grid rowcounts columncounts successes) =
+    let 
+
+loop :: StateT ([StateObject],Int) IO ()
 loop = do
     SO g _ _ _ _ n <- get
     case n of
@@ -187,21 +214,26 @@ loop = do
                     (x:_) -> digitToInt x
                     _ -> error "bad player"
 
-            l3 <- lift $ do putStrLn "Which block did they show you?"
-                            getLine
-            let block = case l3 of
-                    (x:_) -> digitToInt x
-                    _ -> error "bad block"
+            if player == 1 then do
+                    addToGrid [(1,a,i),False) | i <- [2..6]]
+                    addToGrid [(2,b,i),False) | i <- [2..6]]
+                    addToGrid [(3,c,i),False) | i <- [2..6]]
+                else do
+                    l3 <- lift $ do putStrLn "Which block did they show you?"
+                                    getLine
+                    let block = case l3 of
+                            (x:_) -> digitToInt x
+                            _ -> error "bad block"
 
-            addToGrid [((1,a,i),False) | i <- [2..player-1]]
-            addToGrid [((2,b,i),False) | i <- [2..player-1]]
-            addToGrid [((3,c,i),False) | i <- [2..player-1]]
+                    addToGrid [((1,a,i),False) | i <- [2..player-1]]
+                    addToGrid [((2,b,i),False) | i <- [2..player-1]]
+                    addToGrid [((3,c,i),False) | i <- [2..player-1]]
 
-            case block of
-                1 -> addToGrid [((1,a,player),True)]
-                2 -> addToGrid [((2,b,player),True)]
-                3 -> addToGrid [((3,c,player),True)]
-                _ -> error "also bad block"
+                    case block of
+                        1 -> addToGrid [((1,a,player),True)]
+                        2 -> addToGrid [((2,b,player),True)]
+                        3 -> addToGrid [((3,c,player),True)]
+                        _ -> error "also bad block"
 
             modify (\(SO gr ro co su di _) -> SO gr ro co su di 2)
             
