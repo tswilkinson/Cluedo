@@ -16,7 +16,7 @@ type GridBlock = Int
 data StateObject = SO (Map.Map GridPosition Bool)
                       (Map.Map GridRow Int)
                       (Map.Map GridColumn (Int,Int))
-                      (Map.Map GridBlock Bool)
+                      (Map.Map GridBlock Int)
 
 main :: IO ()
 main = do
@@ -50,7 +50,7 @@ main = do
                 ++ [((2,i),0) | i <- [1..6]]
                 ++ [((3,i),0) | i <- [1..9]])
             (Map.fromList [(i,(0,0)) | i <- [1..6]])
-            (Map.fromList [(1,False),(2,False),(3,False)])
+            Map.empty
         jso = addToGrid [(gp1,True),(gp2,True),(gp3,True)] emptyStateObject
     case jso of
         Just so -> evalStateT loop ([so],firstplayer)
@@ -74,11 +74,11 @@ addToGrid' ((m,n,l),False) (SO grid rowcounts columncounts successes) =
         Nothing ->
             let (newrc,rowcounts') = Map.updateLookupWithKey (\_ a -> Just (a+1)) (m,n) rowcounts
                 (successes',ys1) = case newrc of
-                    Just 6 -> (Map.insert m True successes,[])
+                    Just 6 -> (Map.insert m n successes,[])
                     Just 5 -> case Map.lookup m successes of
-                        Just True -> case findIndex (\i -> Map.notMember (m,n,i) grid') [1..6] of
-                             Just i -> (successes,[((m,n,i+1),True)])
-                             Nothing -> error "weird"
+                        Just _ -> case findIndex (\i -> Map.notMember (m,n,i) grid') [1..6] of
+                            Just i -> (successes,[((m,n,i+1),True)])
+                            Nothing -> error "weird"
                         _ -> (successes,[])
                     _ -> (successes,[])
 
@@ -180,10 +180,30 @@ loop = do
                                 _ -> error "also bad block"
                 _ -> error "bad accusation"
 
-            modify (\(so,_) -> (so,2))
-            
-            lift $ putStrLn ""
-            loop
+            (sos',_) <- get
+
+            let sucs :: [Map.Map GridBlock Int]
+                sucs = map (\(SO _ _ _ su) -> su) sos'
+
+                h :: [Maybe Int] -> Maybe Int
+                h [] = error "bizarre"
+                h (Nothing:_) = Nothing
+                h (Just b:sus) = if all (== Just b) sus then Just b else Nothing
+
+                block1suc = h $ map (Map.lookup 1) sucs
+                block2suc = h $ map (Map.lookup 2) sucs
+                block3suc = h $ map (Map.lookup 3) sucs
+
+            case (block1suc,block2suc,block3suc) of
+                (Just b1,Just b2,Just b3) -> lift $ do
+                    putStrLn ""
+                    putStrLn $ "Final accusation: " ++ show b1 ++ show b2 ++ show b3
+                _ -> do
+                    put (sos',2)
+
+                    lift $ putStrLn ""
+                    loop
+
         _ -> do
             l1 <- lift $ do putStrLn $ "What is player " ++ show n ++ "'s accusation?"
                             getLine
