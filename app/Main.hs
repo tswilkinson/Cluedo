@@ -262,7 +262,8 @@ loop = do
                                     Just False -> []
 
                     (sos',_) <- get
-                    put (concatMap applyDisjunction sos',n')
+                    if player == n then put (sos',n')
+                                   else put (concatMap applyDisjunction sos',n')
                 _ -> error "bad accusation"
 
             lift $ putStrLn ""
