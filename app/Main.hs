@@ -147,36 +147,38 @@ loop = do
 
             l1 <- lift $ do putStrLn "Your turn. What is your accusation?"
                             getLine
-            let (a,b,c) = case l1 of
-                    (x:y:z:_) -> (digitToInt x,digitToInt y,digitToInt z)
-                    _ -> error "bad accusation"
+            case l1 of
+                ('n':_) -> return ()
+                (x:y:z:_) -> do
+                    let (a,b,c) = (digitToInt x,digitToInt y,digitToInt z)
 
-            l2 <- lift $ do putStrLn "Which player responded?"
-                            getLine
-            let player = case l2 of
-                    (x:_) -> digitToInt x
-                    _ -> error "bad player"
+                    player <- lift $ do putStrLn "Which player responded?"
+                                        l2 <- getLine
+                                        return $ case l2 of
+                                            (k:_) -> digitToInt k
+                                            _ -> error "bad player"
 
-            if player == 1 then do
-                    addToGridStateT [((1,a,i),False) | i <- [2..6]]
-                    addToGridStateT [((2,b,i),False) | i <- [2..6]]
-                    addToGridStateT [((3,c,i),False) | i <- [2..6]]
-                else do
-                    l3 <- lift $ do putStrLn "Which block did they show you?"
-                                    getLine
-                    let block = case l3 of
-                            (x:_) -> digitToInt x
-                            _ -> error "bad block"
+                    if player == 1 then do
+                            addToGridStateT [((1,a,i),False) | i <- [2..6]]
+                            addToGridStateT [((2,b,i),False) | i <- [2..6]]
+                            addToGridStateT [((3,c,i),False) | i <- [2..6]]
+                        else do
+                            block <- lift $ do putStrLn "Which block did they show you?"
+                                               l3 <- getLine
+                                               return $ case l3 of
+                                                   (k:_) -> digitToInt k
+                                                   _ -> error "bad block" 
 
-                    addToGridStateT [((1,a,i),False) | i <- [2..player-1]]
-                    addToGridStateT [((2,b,i),False) | i <- [2..player-1]]
-                    addToGridStateT [((3,c,i),False) | i <- [2..player-1]]
+                            addToGridStateT [((1,a,i),False) | i <- [2..player-1]]
+                            addToGridStateT [((2,b,i),False) | i <- [2..player-1]]
+                            addToGridStateT [((3,c,i),False) | i <- [2..player-1]]
 
-                    case block of
-                        1 -> addToGridStateT [((1,a,player),True)]
-                        2 -> addToGridStateT [((2,b,player),True)]
-                        3 -> addToGridStateT [((3,c,player),True)]
-                        _ -> error "also bad block"
+                            case block of
+                                1 -> addToGridStateT [((1,a,player),True)]
+                                2 -> addToGridStateT [((2,b,player),True)]
+                                3 -> addToGridStateT [((3,c,player),True)]
+                                _ -> error "also bad block"
+                _ -> error "bad accusation"
 
             modify (\(so,_) -> (so,2))
             
@@ -185,60 +187,63 @@ loop = do
         _ -> do
             l1 <- lift $ do putStrLn $ "What is player " ++ show n ++ "'s accusation?"
                             getLine
-            let (a,b,c) = case l1 of
-                    (x:y:z:_) -> (digitToInt x,digitToInt y,digitToInt z)
-                    _ -> error "bad accusation"
 
-            l2 <- lift $ do putStrLn "Which player responded?"
-                            getLine
-            let player = case l2 of
-                    (x:_) -> digitToInt x
-                    _ -> error "bad player"
+            let n' = if n == 6 then 1 else n+1
 
-                non_respondents = if player > n then [n+1..player-1]
-                                                else [n+1..6]++[1..player-1]
+            case l1 of
+                ('n':_) -> modify (\(so,_) -> (so,n'))
+                (x:y:z:_) -> do
+                    let (a,b,c) = (digitToInt x,digitToInt y,digitToInt z)
 
-            addToGridStateT [((1,a,i),False) | i <- non_respondents]
-            addToGridStateT [((2,b,i),False) | i <- non_respondents]
-            addToGridStateT [((3,c,i),False) | i <- non_respondents]
+                    l2 <- lift $ do putStrLn "Which player responded?"
+                                    getLine
+                    let player = case l2 of
+                            (k:_) -> digitToInt k
+                            _ -> error "bad player"
 
-            let applyDisjunction :: StateObject -> [StateObject]
-                applyDisjunction (SO gr ro co su) = case Map.lookup (1,a,player) gr of
-                    Nothing -> case Map.lookup (2,b,player) gr of
-                        Nothing -> case Map.lookup (3,c,player) gr of
-                            Nothing -> catMaybes [addToGrid [((1,a,player),True)] (SO gr ro co su)
-                                                 ,addToGrid [((2,b,player),True)] (SO gr ro co su)
-                                                 ,addToGrid [((3,c,player),True)] (SO gr ro co su)
-                                                 ]
+                        non_respondents = if player > n then [n+1..player-1]
+                                                        else [n+1..6]++[1..player-1]
+
+                    addToGridStateT [((1,a,i),False) | i <- non_respondents]
+                    addToGridStateT [((2,b,i),False) | i <- non_respondents]
+                    addToGridStateT [((3,c,i),False) | i <- non_respondents]
+
+                    let applyDisjunction :: StateObject -> [StateObject]
+                        applyDisjunction (SO gr ro co su) = case Map.lookup (1,a,player) gr of
+                            Nothing -> case Map.lookup (2,b,player) gr of
+                                Nothing -> case Map.lookup (3,c,player) gr of
+                                    Nothing -> catMaybes [addToGrid [((1,a,player),True)] (SO gr ro co su)
+                                                         ,addToGrid [((2,b,player),True)] (SO gr ro co su)
+                                                         ,addToGrid [((3,c,player),True)] (SO gr ro co su)
+                                                         ]
+                                    Just True -> [SO gr ro co su]
+                                    Just False -> catMaybes [addToGrid [((1,a,player),True)] (SO gr ro co su)
+                                                            ,addToGrid [((2,b,player),True)] (SO gr ro co su)
+                                                            ]
+                                Just True -> [SO gr ro co su]
+                                Just False -> case Map.lookup (3,c,player) gr of
+                                    Nothing -> catMaybes [addToGrid [((1,a,player),True)] (SO gr ro co su)
+                                                         ,addToGrid [((3,c,player),True)] (SO gr ro co su)
+                                                         ]
+                                    Just True -> [SO gr ro co su]
+                                    Just False -> catMaybes [addToGrid [((1,a,player),True)] (SO gr ro co su)]
                             Just True -> [SO gr ro co su]
-                            Just False -> catMaybes [addToGrid [((1,a,player),True)] (SO gr ro co su)
-                                                    ,addToGrid [((2,b,player),True)] (SO gr ro co su)
-                                                    ]
-                        Just True -> [SO gr ro co su]
-                        Just False -> case Map.lookup (3,c,player) gr of
-                            Nothing -> catMaybes [addToGrid [((1,a,player),True)] (SO gr ro co su)
-                                                 ,addToGrid [((3,c,player),True)] (SO gr ro co su)
-                                                 ]
-                            Just True -> [SO gr ro co su]
-                            Just False -> catMaybes [addToGrid [((1,a,player),True)] (SO gr ro co su)]
-                    Just True -> [SO gr ro co su]
-                    Just False -> case Map.lookup (2,b,player) gr of
-                        Nothing -> case Map.lookup (3,c,player) gr of
-                            Nothing -> catMaybes [addToGrid [((2,b,player),True)] (SO gr ro co su)
-                                                 ,addToGrid [((3,c,player),True)] (SO gr ro co su)
-                                                 ]
-                            Just True -> [SO gr ro co su]
-                            Just False -> catMaybes [addToGrid [((2,b,player),True)] (SO gr ro co su)]
-                        Just True -> [SO gr ro co su]
-                        Just False -> case Map.lookup (3,c,player) gr of
-                            Nothing -> catMaybes [addToGrid [((3,c,player),True)] (SO gr ro co su)]
-                            Just True -> [SO gr ro co su]
-                            Just False -> []
+                            Just False -> case Map.lookup (2,b,player) gr of
+                                Nothing -> case Map.lookup (3,c,player) gr of
+                                    Nothing -> catMaybes [addToGrid [((2,b,player),True)] (SO gr ro co su)
+                                                         ,addToGrid [((3,c,player),True)] (SO gr ro co su)
+                                                         ]
+                                    Just True -> [SO gr ro co su]
+                                    Just False -> catMaybes [addToGrid [((2,b,player),True)] (SO gr ro co su)]
+                                Just True -> [SO gr ro co su]
+                                Just False -> case Map.lookup (3,c,player) gr of
+                                    Nothing -> catMaybes [addToGrid [((3,c,player),True)] (SO gr ro co su)]
+                                    Just True -> [SO gr ro co su]
+                                    Just False -> []
 
-            (sos',_) <- get
-            case n of
-                6 -> put (concatMap applyDisjunction sos',1)
-                _ -> put (concatMap applyDisjunction sos',n+1)
+                    (sos',_) <- get
+                    put (concatMap applyDisjunction sos',n')
+                _ -> error "bad accusation"
 
             lift $ putStrLn ""
             loop
