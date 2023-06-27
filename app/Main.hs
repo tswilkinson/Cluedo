@@ -135,7 +135,7 @@ addToGrid' ((m,n,l),True) (SO grid rowcounts columncounts successes) =
                             (findIndices (\i -> Map.notMember (m,r+1,i) grid') [1..6]))
                         Nothing -> error "puzzling"
                     Just (Left k) -> (Map.insert m (Left (k+1)) successes,[])
-                    Just (Right _) -> error "implausible"
+                    Just (Right _) -> (successes,[])
              in Just (SO grid' rowcounts' columncounts' successes',ys1++ys2++ys3++ys4)
         Just False -> Nothing
         Just True -> Just (SO grid rowcounts columncounts successes,[])
