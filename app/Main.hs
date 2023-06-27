@@ -16,7 +16,7 @@ type GridBlock = Int
 data StateObject = SO (Map.Map GridPosition Bool)
                       (Map.Map GridRow Int)
                       (Map.Map GridColumn (Int,Int))
-                      (Map.Map GridBlock Int)
+                      (Map.Map GridBlock (Either Int Int))
 
 main :: IO ()
 main = do
@@ -74,9 +74,9 @@ addToGrid' ((m,n,l),False) (SO grid rowcounts columncounts successes) =
         Nothing ->
             let (newrc,rowcounts') = Map.updateLookupWithKey (\_ a -> Just (a+1)) (m,n) rowcounts
                 (successes',ys1) = case newrc of
-                    Just 6 -> (Map.insert m n successes,[])
+                    Just 6 -> (Map.insert m (Right n) successes,[])
                     Just 5 -> case Map.lookup m successes of
-                        Just _ -> case findIndex (\i -> Map.notMember (m,n,i) grid') [1..6] of
+                        Just (Right _) -> case findIndex (\i -> Map.notMember (m,n,i) grid') [1..6] of
                             Just i -> (successes,[((m,n,i+1),True)])
                             Nothing -> error "weird"
                         _ -> (successes,[])
@@ -123,7 +123,20 @@ addToGrid' ((m,n,l),True) (SO grid rowcounts columncounts successes) =
                     Just i -> ((m,t+1,i+1),True)
                     Nothing -> error "quirky"
                 ys3 = map f rows
-             in Just (SO grid' rowcounts' columncounts' successes,ys1++ys2++ys3)
+
+                g :: Maybe Int -> Bool
+                g (Just c) = c < 10
+                g Nothing = error "troubling"
+
+                (successes',ys4) = case Map.lookup m successes of
+                    Nothing -> (Map.insert m (Left 1) successes,[])
+                    Just (Left 4) -> case findIndex (\r -> g $ Map.lookup (m,r) rowcounts') [1..6] of
+                        Just r -> (successes,map (\i -> ((m,r+1,i+1),False))
+                            (findIndices (\i -> Map.notMember (m,r+1,i) grid') [1..6]))
+                        Nothing -> error "puzzling"
+                    Just (Left k) -> (Map.insert m (Left (k+1)) successes,[])
+                    Just (Right _) -> error "implausible"
+             in Just (SO grid' rowcounts' columncounts' successes',ys1++ys2++ys3++ys4)
         Just False -> Nothing
         Just True -> Just (SO grid rowcounts columncounts successes,[])
 
@@ -189,13 +202,14 @@ loop = do
 
             (sos',_) <- get
 
-            let sucs :: [Map.Map GridBlock Int]
+            let sucs :: [Map.Map GridBlock (Either Int Int)]
                 sucs = map (\(SO _ _ _ su) -> su) sos'
 
-                h :: [Maybe Int] -> Maybe Int
+                h :: [Maybe (Either Int Int)] -> Maybe Int
                 h [] = error "bizarre"
                 h (Nothing:_) = Nothing
-                h (Just b:sus) = if all (== Just b) sus then Just b else Nothing
+                h (Just (Left _):_) = Nothing
+                h (Just (Right b):sus) = if all (== Just (Right b)) sus then Just b else Nothing
 
                 block1suc = h $ map (Map.lookup 1) sucs
                 block2suc = h $ map (Map.lookup 2) sucs
