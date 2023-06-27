@@ -116,7 +116,14 @@ addToGrid' ((m,n,l),True) (SO grid rowcounts columncounts successes) =
                                        (findIndices (\i -> Map.notMember (3,i,l) grid') [1..9])
                          in (ys21 ++ ys22 ++ ys23)
                     _ -> []
-             in Just (SO grid' rowcounts' columncounts' successes,ys1++ys2)
+
+                rows = findIndices (\i -> Map.lookup (m,i) rowcounts' == Just 5) [1..6]
+                f :: Int -> (GridPosition,Bool)
+                f t = case findIndex (\i -> Map.notMember (m,t+1,i) grid') [1..6] of
+                    Just i -> ((m,t+1,i+1),True)
+                    Nothing -> error "quirky"
+                ys3 = map f rows
+             in Just (SO grid' rowcounts' columncounts' successes,ys1++ys2++ys3)
         Just False -> Nothing
         Just True -> Just (SO grid rowcounts columncounts successes,[])
 
