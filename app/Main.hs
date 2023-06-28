@@ -74,7 +74,13 @@ addToGrid' ((m,n,l),False) (SO grid rowcounts columncounts successes) =
         Nothing ->
             let (newrc,rowcounts') = Map.updateLookupWithKey (\_ a -> Just (a+1)) (m,n) rowcounts
                 (successes',ys1) = case newrc of
-                    Just 6 -> (Map.insert m (Right n) successes,[])
+                    Just 6 -> let
+                        rows = findIndices (\i -> Map.lookup (m,i) rowcounts' == Just 5) [1..6]
+                        f :: Int -> (GridPosition,Bool)
+                        f t = case findIndex (\i -> Map.notMember (m,t+1,i) grid') [1..6] of
+                            Just i -> ((m,t+1,i+1),True)
+                            Nothing -> error "quirky"
+                     in (Map.insert m (Right n) successes,map f rows)
                     Just 5 -> case Map.lookup m successes of
                         Just (Right _) -> case findIndex (\i -> Map.notMember (m,n,i) grid') [1..6] of
                             Just i -> (successes,[((m,n,i+1),True)])
@@ -117,18 +123,11 @@ addToGrid' ((m,n,l),True) (SO grid rowcounts columncounts successes) =
                          in (ys21 ++ ys22 ++ ys23)
                     _ -> []
 
-                rows = findIndices (\i -> Map.lookup (m,i) rowcounts' == Just 5) [1..6]
-                f :: Int -> (GridPosition,Bool)
-                f t = case findIndex (\i -> Map.notMember (m,t+1,i) grid') [1..6] of
-                    Just i -> ((m,t+1,i+1),True)
-                    Nothing -> error "quirky"
-                ys3 = map f rows
-
                 g :: Maybe Int -> Bool
                 g (Just c) = c < 10
                 g Nothing = error "troubling"
 
-                (successes',ys4) = case Map.lookup m successes of
+                (successes',ys3) = case Map.lookup m successes of
                     Nothing -> (Map.insert m (Left 1) successes,[])
                     Just (Left 4) -> case findIndex (\r -> g $ Map.lookup (m,r) rowcounts') [1..6] of
                         Just r -> (successes,map (\i -> ((m,r+1,i+1),False))
@@ -136,7 +135,7 @@ addToGrid' ((m,n,l),True) (SO grid rowcounts columncounts successes) =
                         Nothing -> error "puzzling"
                     Just (Left k) -> (Map.insert m (Left (k+1)) successes,[])
                     Just (Right _) -> (successes,[])
-             in Just (SO grid' rowcounts' columncounts' successes',ys1++ys2++ys3++ys4)
+             in Just (SO grid' rowcounts' columncounts' successes',ys1++ys2++ys3)
         Just False -> Nothing
         Just True -> Just (SO grid rowcounts columncounts successes,[])
 
