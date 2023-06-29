@@ -56,6 +56,30 @@ main = do
         Just so -> evalStateT loop ([so],firstplayer)
         Nothing -> error "confusing"
 
+entailed_by :: StateObject -> StateObject -> Bool
+entailed_by (SO gr1 _ _ _) (SO gr2 _ _ _) = all go ([(1,i,j) | i <- [1..6],j <- [1..6]]
+                                                 ++ [(2,i,j) | i <- [1..6],j <- [1..6]]
+                                                 ++ [(3,i,j) | i <- [1..9],j <- [1..6]])
+    where go :: GridPosition -> Bool
+          go p = case Map.lookup p gr1 of
+              Nothing -> True
+              Just b -> Map.lookup p gr2 == Just b
+
+insert' :: StateObject -> [StateObject] -> [StateObject]
+insert' so1 [] = [so1]
+insert' so1 (so2:sos) = if so1 `entailed_by` so2 then insert_below so1 sos else
+                            if so2 `entailed_by` so1 then so2:sos else so2:insert' so1 sos
+
+insert_below :: StateObject -> [StateObject] -> [StateObject]
+insert_below so1 [] = [so1]
+insert_below so1 (so2:sos) = if so1 `entailed_by` so2 then insert_below so1 sos else so2:insert_below so1 sos
+
+reduce_list :: [StateObject] -> [StateObject]
+reduce_list x = go x []
+    where go :: [StateObject] -> [StateObject] -> [StateObject]
+          go [] sos2 = sos2
+          go (so1:sos1) sos2 = go sos1 (insert' so1 sos2)
+
 addToGridStateT :: [(GridPosition,Bool)] -> StateT ([StateObject],Int) IO ()
 addToGridStateT xs = do
     (sos,n) <- get
@@ -150,8 +174,18 @@ loop = do
                 g :: [Maybe Bool] -> Char
                 g [] = error "odd"
                 g (Nothing:_) = '-'
-                g (Just True:xs)  = if all (== Just True) xs then 'Y' else '-'
-                g (Just False:xs) = if all (== Just False) xs then 'N' else '-'
+                g (Just True:xs)  = go xs
+                    where go :: [Maybe Bool] -> Char
+                          go [] = 'Y'
+                          go (Nothing:ys) = if any (== Just False) ys then '*' else '-'
+                          go (Just False:_) = '*'
+                          go (Just True:ys) = go ys
+                g (Just False:xs) = go xs
+                    where go :: [Maybe Bool] -> Char
+                          go [] = 'N'
+                          go (Nothing:ys) = if any (== Just True) ys then '*' else '-'
+                          go (Just True:_) = '*'
+                          go (Just False:ys) = go ys
 
                 block1 = [[g $ map (Map.lookup (1,i,j)) grs | j <- [1..6]] | i <- [1..6]]
                 block2 = [[g $ map (Map.lookup (2,i,j)) grs | j <- [1..6]] | i <- [1..6]]
@@ -219,7 +253,7 @@ loop = do
                     putStrLn ""
                     putStrLn $ "Final accusation: " ++ show b1 ++ show b2 ++ show b3
                 _ -> do
-                    put (sos',2)
+                    put (reduce_list sos',2)
 
                     lift $ putStrLn ""
                     loop
@@ -282,8 +316,8 @@ loop = do
                                     Just False -> []
 
                     (sos',_) <- get
-                    if player == n then put (sos',n')
-                                   else put (concatMap applyDisjunction sos',n')
+                    if player == n then put (reduce_list sos',n')
+                                   else put (reduce_list $ concatMap applyDisjunction sos',n')
                 _ -> error "bad accusation"
 
             lift $ putStrLn ""
