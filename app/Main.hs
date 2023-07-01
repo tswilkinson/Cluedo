@@ -2,7 +2,7 @@ module Main (main) where
 
 import Data.Char
 import Data.Maybe
-import Data.List(findIndex,findIndices)
+import Data.List(findIndex,findIndices,intercalate)
 import Control.Monad(forM_)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Strict
@@ -17,6 +17,31 @@ data StateObject = SO (Map.Map GridPosition Bool)
                       (Map.Map GridRow Int)
                       (Map.Map GridColumn (Int,Int))
                       (Map.Map GridBlock (Either Int Int))
+
+instance Show StateObject where
+    show (SO gr _ _ _) =
+        let g Nothing = '-'
+            g (Just False) = 'N'
+            g (Just True) = 'Y'
+            
+            block1 = [[g $ Map.lookup (1,i,j) gr | j <- [1..6]] | i <- [1..6]]
+            block2 = [[g $ Map.lookup (2,i,j) gr | j <- [1..6]] | i <- [1..6]]
+            block3 = [[g $ Map.lookup (3,i,j) gr | j <- [1..6]] | i <- [1..9]]
+
+            line1 = intercalate "\n" block1
+            line2 = intercalate "\n" block2
+            line3 = intercalate "\n" block3
+
+         in "\n" ++ line1 ++ "\n\n" ++ line2 ++ "\n\n" ++ line3 ++ "\n"
+
+emptyStateObject :: StateObject
+emptyStateObject = SO
+    Map.empty
+    (Map.fromList $ [((1,i),0) | i <- [1..6]]
+        ++ [((2,i),0) | i <- [1..6]]
+        ++ [((3,i),0) | i <- [1..9]])
+    (Map.fromList [(i,(0,0)) | i <- [1..6]])
+    Map.empty
 
 main :: IO ()
 main = do
@@ -45,13 +70,7 @@ main = do
             _     -> error "invalid first player"
     if firstplayer >= 1 && firstplayer <= 6 then return () else error "bad first player"
 
-    let emptyStateObject = SO Map.empty
-            (Map.fromList $ [((1,i),0) | i <- [1..6]]
-                ++ [((2,i),0) | i <- [1..6]]
-                ++ [((3,i),0) | i <- [1..9]])
-            (Map.fromList [(i,(0,0)) | i <- [1..6]])
-            Map.empty
-        jso = addToGrid [(gp1,True),(gp2,True),(gp3,True)] emptyStateObject
+    let jso = addToGrid [(gp1,True),(gp2,True),(gp3,True)] emptyStateObject
     case jso of
         Just so -> evalStateT loop ([so],firstplayer)
         Nothing -> error "confusing"
@@ -67,12 +86,9 @@ entailed_by (SO gr1 _ _ _) (SO gr2 _ _ _) = all go ([(1,i,j) | i <- [1..6],j <- 
 
 insert' :: StateObject -> [StateObject] -> [StateObject]
 insert' so1 [] = [so1]
-insert' so1 (so2:sos) = if so1 `entailed_by` so2 then insert_below so1 sos else
-                            if so2 `entailed_by` so1 then so2:sos else so2:insert' so1 sos
-
-insert_below :: StateObject -> [StateObject] -> [StateObject]
-insert_below so1 [] = [so1]
-insert_below so1 (so2:sos) = if so1 `entailed_by` so2 then insert_below so1 sos else so2:insert_below so1 sos
+insert' so1 (so2:sos) = if so2 `entailed_by` so1 then so2:sos else
+                            if so1 `entailed_by` so2 then so1:filter (not.(so1 `entailed_by`)) sos else
+                                so2:insert' so1 sos
 
 reduce_list :: [StateObject] -> [StateObject]
 reduce_list x = go x []
@@ -83,7 +99,7 @@ reduce_list x = go x []
 addToGridStateT :: [(GridPosition,Bool)] -> StateT ([StateObject],Int) IO ()
 addToGridStateT xs = do
     (sos,n) <- get
-    put (mapMaybe (addToGrid xs) sos,n)
+    put (reduce_list $ mapMaybe (addToGrid xs) sos,n)
 
 addToGrid :: [(GridPosition,Bool)] -> StateObject -> Maybe StateObject
 addToGrid [] so = Just so
@@ -151,13 +167,16 @@ addToGrid' ((m,n,l),True) (SO grid rowcounts columncounts successes) =
                 g (Just c) = c < 10
                 g Nothing = error "troubling"
 
+                num_rows = if m == 3 then 9 else 6
+
                 (successes',ys3) = case Map.lookup m successes of
                     Nothing -> (Map.insert m (Left 1) successes,[])
-                    Just (Left 4) -> case findIndex (\r -> g $ Map.lookup (m,r) rowcounts') [1..6] of
-                        Just r -> (successes,map (\i -> ((m,r+1,i+1),False))
-                            (findIndices (\i -> Map.notMember (m,r+1,i) grid') [1..6]))
-                        Nothing -> error "puzzling"
-                    Just (Left k) -> (Map.insert m (Left (k+1)) successes,[])
+                    Just (Left k) -> if k == num_rows-2
+                        then case findIndex (\r -> g $ Map.lookup (m,r) rowcounts') [1..num_rows] of
+                                 Just r -> (successes,map (\i -> ((m,r+1,i+1),False))
+                                     (findIndices (\i -> Map.notMember (m,r+1,i) grid') [1..6]))
+                                 Nothing -> error "puzzling"
+                        else (Map.insert m (Left (k+1)) successes,[])
                     Just (Right _) -> (successes,[])
              in Just (SO grid' rowcounts' columncounts' successes',ys1++ys2++ys3)
         Just False -> Nothing
@@ -166,6 +185,7 @@ addToGrid' ((m,n,l),True) (SO grid rowcounts columncounts successes) =
 loop :: StateT ([StateObject],Int) IO ()
 loop = do
     (sos,n) <- get
+
     case n of
         1 -> do
             let grs :: [Map.Map GridPosition Bool]
@@ -173,7 +193,12 @@ loop = do
                 
                 g :: [Maybe Bool] -> Char
                 g [] = error "odd"
-                g (Nothing:_) = '-'
+                g (Nothing:xs) = go xs
+                    where go :: [Maybe Bool] -> Char
+                          go [] = '-'
+                          go (Nothing:ys) = go ys
+                          go (Just False:ys) = if any (== Just True) ys then '*' else '-'
+                          go (Just True:ys) = if any (== Just False) ys then '*' else '-'
                 g (Just True:xs)  = go xs
                     where go :: [Maybe Bool] -> Char
                           go [] = 'Y'
@@ -198,7 +223,7 @@ loop = do
                       forM_ block3 putStrLn
                       putStrLn ""
 
-            l1 <- lift $ do putStrLn "Your turn. What is your accusation?"
+            l1 <- lift $ do putStrLn $ show (length sos) ++ " scenarios. Your turn. What is your accusation?"
                             getLine
             case l1 of
                 ('n':_) -> return ()
@@ -212,9 +237,9 @@ loop = do
                                             _ -> error "bad player"
 
                     if player == 1 then do
-                            addToGridStateT [((1,a,i),False) | i <- [2..6]]
-                            addToGridStateT [((2,b,i),False) | i <- [2..6]]
-                            addToGridStateT [((3,c,i),False) | i <- [2..6]]
+                            addToGridStateT ([((1,a,i),False) | i <- [2..6]]
+                                          ++ [((2,b,i),False) | i <- [2..6]]
+                                          ++ [((3,c,i),False) | i <- [2..6]])
                         else do
                             block <- lift $ do putStrLn "Which block did they show you?"
                                                l3 <- getLine
@@ -222,9 +247,9 @@ loop = do
                                                    (k:_) -> digitToInt k
                                                    _ -> error "bad block" 
 
-                            addToGridStateT [((1,a,i),False) | i <- [2..player-1]]
-                            addToGridStateT [((2,b,i),False) | i <- [2..player-1]]
-                            addToGridStateT [((3,c,i),False) | i <- [2..player-1]]
+                            addToGridStateT ([((1,a,i),False) | i <- [2..player-1]]
+                                          ++ [((2,b,i),False) | i <- [2..player-1]]
+                                          ++ [((3,c,i),False) | i <- [2..player-1]])
 
                             case block of
                                 1 -> addToGridStateT [((1,a,player),True)]
@@ -253,13 +278,13 @@ loop = do
                     putStrLn ""
                     putStrLn $ "Final accusation: " ++ show b1 ++ show b2 ++ show b3
                 _ -> do
-                    put (reduce_list sos',2)
+                    put (sos',2)
 
                     lift $ putStrLn ""
                     loop
 
         _ -> do
-            l1 <- lift $ do putStrLn $ "What is player " ++ show n ++ "'s accusation?"
+            l1 <- lift $ do putStrLn $ show (length sos) ++ " scenarios. What is player " ++ show n ++ "'s accusation?"
                             getLine
 
             let n' = if n == 6 then 1 else n+1
@@ -278,9 +303,9 @@ loop = do
                         non_respondents = if player > n then [n+1..player-1]
                                                         else [n+1..6]++[1..player-1]
 
-                    addToGridStateT [((1,a,i),False) | i <- non_respondents]
-                    addToGridStateT [((2,b,i),False) | i <- non_respondents]
-                    addToGridStateT [((3,c,i),False) | i <- non_respondents]
+                    addToGridStateT ([((1,a,i),False) | i <- non_respondents]
+                                  ++ [((2,b,i),False) | i <- non_respondents]
+                                  ++ [((3,c,i),False) | i <- non_respondents])
 
                     let applyDisjunction :: StateObject -> [StateObject]
                         applyDisjunction (SO gr ro co su) = case Map.lookup (1,a,player) gr of
@@ -316,7 +341,7 @@ loop = do
                                     Just False -> []
 
                     (sos',_) <- get
-                    if player == n then put (reduce_list sos',n')
+                    if player == n then put (sos',n')
                                    else put (reduce_list $ concatMap applyDisjunction sos',n')
                 _ -> error "bad accusation"
 
