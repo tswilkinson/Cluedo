@@ -182,48 +182,52 @@ addToGrid' ((m,n,l),True) (SO grid rowcounts columncounts successes) =
         Just False -> Nothing
         Just True -> Just (SO grid rowcounts columncounts successes,[])
 
+printSummary :: [StateObject] -> IO ()
+printSummary sos = do
+    let grs :: [Map.Map GridPosition Bool]
+        grs = map (\(SO gr _ _ _) -> gr) sos
+                
+        g :: [Maybe Bool] -> Char
+        g [] = error "odd"
+        g (Nothing:xs) = go xs
+            where go :: [Maybe Bool] -> Char
+                  go [] = '-'
+                  go (Nothing:ys) = go ys
+                  go (Just False:ys) = if any (== Just True) ys then '*' else '-'
+                  go (Just True:ys) = if any (== Just False) ys then '*' else '-'
+        g (Just True:xs)  = go xs
+            where go :: [Maybe Bool] -> Char
+                  go [] = 'Y'
+                  go (Nothing:ys) = if any (== Just False) ys then '*' else '-'
+                  go (Just False:_) = '*'
+                  go (Just True:ys) = go ys
+        g (Just False:xs) = go xs
+            where go :: [Maybe Bool] -> Char
+                  go [] = 'N'
+                  go (Nothing:ys) = if any (== Just True) ys then '*' else '-'
+                  go (Just True:_) = '*'
+                  go (Just False:ys) = go ys
+
+        block1 = [[g $ map (Map.lookup (1,i,j)) grs | j <- [1..6]] | i <- [1..6]]
+        block2 = [[g $ map (Map.lookup (2,i,j)) grs | j <- [1..6]] | i <- [1..6]]
+        block3 = [[g $ map (Map.lookup (3,i,j)) grs | j <- [1..6]] | i <- [1..9]]
+
+    forM_ block1 putStrLn
+    putStrLn ""
+    forM_ block2 putStrLn
+    putStrLn ""
+    forM_ block3 putStrLn
+    putStrLn ""
+
 loop :: StateT ([StateObject],Int) IO ()
 loop = do
     (sos,n) <- get
 
     case n of
         1 -> do
-            let grs :: [Map.Map GridPosition Bool]
-                grs = map (\(SO gr _ _ _) -> gr) sos
-                
-                g :: [Maybe Bool] -> Char
-                g [] = error "odd"
-                g (Nothing:xs) = go xs
-                    where go :: [Maybe Bool] -> Char
-                          go [] = '-'
-                          go (Nothing:ys) = go ys
-                          go (Just False:ys) = if any (== Just True) ys then '*' else '-'
-                          go (Just True:ys) = if any (== Just False) ys then '*' else '-'
-                g (Just True:xs)  = go xs
-                    where go :: [Maybe Bool] -> Char
-                          go [] = 'Y'
-                          go (Nothing:ys) = if any (== Just False) ys then '*' else '-'
-                          go (Just False:_) = '*'
-                          go (Just True:ys) = go ys
-                g (Just False:xs) = go xs
-                    where go :: [Maybe Bool] -> Char
-                          go [] = 'N'
-                          go (Nothing:ys) = if any (== Just True) ys then '*' else '-'
-                          go (Just True:_) = '*'
-                          go (Just False:ys) = go ys
+            lift $ printSummary sos
 
-                block1 = [[g $ map (Map.lookup (1,i,j)) grs | j <- [1..6]] | i <- [1..6]]
-                block2 = [[g $ map (Map.lookup (2,i,j)) grs | j <- [1..6]] | i <- [1..6]]
-                block3 = [[g $ map (Map.lookup (3,i,j)) grs | j <- [1..6]] | i <- [1..9]]
-
-            lift $ do forM_ block1 putStrLn
-                      putStrLn ""
-                      forM_ block2 putStrLn
-                      putStrLn ""
-                      forM_ block3 putStrLn
-                      putStrLn ""
-
-            l1 <- lift $ do putStrLn $ show (length sos) ++ " scenarios. Your turn. What is your accusation?"
+            l1 <- lift $ do putStrLn "Your turn. What is your accusation?"
                             getLine
             case l1 of
                 ('n':_) -> return ()
@@ -243,6 +247,7 @@ loop = do
                         else do
                             block <- lift $ do putStrLn "Which block did they show you?"
                                                l3 <- getLine
+                                               putStrLn ""
                                                return $ case l3 of
                                                    (k:_) -> digitToInt k
                                                    _ -> error "bad block" 
@@ -275,16 +280,15 @@ loop = do
 
             case (block1suc,block2suc,block3suc) of
                 (Just b1,Just b2,Just b3) -> lift $ do
-                    putStrLn ""
                     putStrLn $ "Final accusation: " ++ show b1 ++ show b2 ++ show b3
                 _ -> do
                     put (sos',2)
 
-                    lift $ putStrLn ""
+                    lift $ printSummary sos'
                     loop
 
         _ -> do
-            l1 <- lift $ do putStrLn $ show (length sos) ++ " scenarios. What is player " ++ show n ++ "'s accusation?"
+            l1 <- lift $ do putStrLn $ "What is player " ++ show n ++ "'s accusation?"
                             getLine
 
             let n' = if n == 6 then 1 else n+1
