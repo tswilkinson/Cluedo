@@ -43,31 +43,35 @@ emptyStateObject = SO
     (Map.fromList [(i,(0,0)) | i <- [1..6]])
     Map.empty
 
+getCard :: IO (Int,Int,Int)
+getCard = do
+    l1 <- getLine
+    case l1 of
+        ('q':_) -> error "quit"
+        (x:y:_) -> return (digitToInt x,digitToInt y,1)
+        _       -> getCard
+
+getInt :: IO Int
+getInt = do
+    l1 <- getLine
+    case l1 of
+        ('q':_) -> error "quit"
+        (x:_) -> return (digitToInt x)
+        _     -> getInt
+
 main :: IO ()
 main = do
     putStrLn "please enter your first card:"
-    l1 <- getLine
-    let gp1 = case l1 of
-            (x:y:_)   -> (digitToInt x,digitToInt y,1)
-            _         -> error "invalid first card"
+    gp1 <- getCard
 
     putStrLn "please enter your second card:"
-    l2 <- getLine
-    let gp2 = case l2 of
-            (x:y:_)   -> (digitToInt x,digitToInt y,1)
-            _         -> error "invalid second card"
+    gp2 <- getCard
 
     putStrLn "please enter your third card:"
-    l3 <- getLine
-    let gp3 = case l3 of
-            (x:y:_)   -> (digitToInt x,digitToInt y,1)
-            _         -> error "invalid third card"
+    gp3 <- getCard
     
     putStrLn "which player accuses first?"
-    l4 <- getLine
-    let firstplayer = case l4 of
-            (x:_) -> digitToInt x
-            _     -> error "invalid first player"
+    firstplayer <- getInt
     if firstplayer >= 1 && firstplayer <= 6 then return () else error "bad first player"
 
     let jso = addToGrid [(gp1,True),(gp2,True),(gp3,True)] emptyStateObject
@@ -219,6 +223,15 @@ printSummary sos = do
     forM_ block3 putStrLn
     putStrLn ""
 
+getAccusation :: IO (Maybe (Int,Int,Int))
+getAccusation = do
+    l1 <- getLine
+    case l1 of
+        ('q':_)   -> error "quit"
+        ('n':_)   -> return Nothing
+        (x:y:z:_) -> return (Just (digitToInt x,digitToInt y,digitToInt z))
+        _         -> getAccusation
+
 loop :: StateT ([StateObject],Int) IO ()
 loop = do
     (sos,n) <- get
@@ -227,41 +240,33 @@ loop = do
         1 -> do
             lift $ printSummary sos
 
-            l1 <- lift $ do putStrLn "Your turn. What is your accusation?"
-                            getLine
-            case l1 of
-                ('n':_) -> return ()
-                (x:y:z:_) -> do
-                    let (a,b,c) = (digitToInt x,digitToInt y,digitToInt z)
-
+            macc <- lift $ do putStrLn "Your turn. What is your accusation?"
+                              getAccusation
+            case macc of
+                Nothing -> return ()
+                Just (a,b,c) -> do
                     player <- lift $ do putStrLn "Which player responded?"
-                                        l2 <- getLine
-                                        return $ case l2 of
-                                            (k:_) -> digitToInt k
-                                            _ -> error "bad player"
+                                        getInt
 
                     if player == 1 then do
-                            addToGridStateT ([((1,a,i),False) | i <- [2..6]]
-                                          ++ [((2,b,i),False) | i <- [2..6]]
-                                          ++ [((3,c,i),False) | i <- [2..6]])
-                        else do
-                            block <- lift $ do putStrLn "Which block did they show you?"
-                                               l3 <- getLine
-                                               putStrLn ""
-                                               return $ case l3 of
-                                                   (k:_) -> digitToInt k
-                                                   _ -> error "bad block" 
+                        addToGridStateT ([((1,a,i),False) | i <- [2..6]]
+                                      ++ [((2,b,i),False) | i <- [2..6]]
+                                      ++ [((3,c,i),False) | i <- [2..6]])
+                    else do
+                        block <- lift $ do putStrLn "Which block did they show you?"
+                                           getInt
 
-                            addToGridStateT ([((1,a,i),False) | i <- [2..player-1]]
-                                          ++ [((2,b,i),False) | i <- [2..player-1]]
-                                          ++ [((3,c,i),False) | i <- [2..player-1]])
+                        lift $ putStrLn ""
 
-                            case block of
-                                1 -> addToGridStateT [((1,a,player),True)]
-                                2 -> addToGridStateT [((2,b,player),True)]
-                                3 -> addToGridStateT [((3,c,player),True)]
-                                _ -> error "also bad block"
-                _ -> error "bad accusation"
+                        addToGridStateT ([((1,a,i),False) | i <- [2..player-1]]
+                                      ++ [((2,b,i),False) | i <- [2..player-1]]
+                                      ++ [((3,c,i),False) | i <- [2..player-1]])
+
+                        case block of
+                            1 -> addToGridStateT [((1,a,player),True)]
+                            2 -> addToGridStateT [((2,b,player),True)]
+                            3 -> addToGridStateT [((3,c,player),True)]
+                            _ -> error "also bad block"
 
             (sos',_) <- get
 
@@ -288,23 +293,18 @@ loop = do
                     loop
 
         _ -> do
-            l1 <- lift $ do putStrLn $ "What is player " ++ show n ++ "'s accusation?"
-                            getLine
+            macc <- lift $ do putStrLn $ "What is player " ++ show n ++ "'s accusation?"
+                              getAccusation
 
             let n' = if n == 6 then 1 else n+1
 
-            case l1 of
-                ('n':_) -> modify (\(so,_) -> (so,n'))
-                (x:y:z:_) -> do
-                    let (a,b,c) = (digitToInt x,digitToInt y,digitToInt z)
+            case macc of
+                Nothing -> modify (\(so,_) -> (so,n'))
+                Just (a,b,c) -> do
+                    player <- lift $ do putStrLn "Which player responded?"
+                                        getInt
 
-                    l2 <- lift $ do putStrLn "Which player responded?"
-                                    getLine
-                    let player = case l2 of
-                            (k:_) -> digitToInt k
-                            _ -> error "bad player"
-
-                        non_respondents = if player > n then [n+1..player-1]
+                    let non_respondents = if player > n then [n+1..player-1]
                                                         else [n+1..6]++[1..player-1]
 
                     addToGridStateT ([((1,a,i),False) | i <- non_respondents]
@@ -347,7 +347,6 @@ loop = do
                     (sos',_) <- get
                     if player == n then put (sos',n')
                                    else put (reduce_list $ concatMap applyDisjunction sos',n')
-                _ -> error "bad accusation"
 
             lift $ putStrLn ""
             loop
