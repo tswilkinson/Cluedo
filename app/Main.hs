@@ -177,7 +177,7 @@ addToGrid' ((m,n,l),True) (SO grid rowcounts columncounts successes) =
                     Nothing -> (Map.insert m (Left 1) successes,[])
                     Just (Left k) -> if k == num_rows-2
                         then case findIndex (\r -> g $ Map.lookup (m,r) rowcounts') [1..num_rows] of
-                                 Just r -> (successes,map (\i -> ((m,r+1,i+1),False))
+                                 Just r -> (Map.insert m (Left num_rows) successes,map (\i -> ((m,r+1,i+1),False))
                                      (findIndices (\i -> Map.notMember (m,r+1,i) grid') [1..6]))
                                  Nothing -> error "puzzling"
                         else (Map.insert m (Left (k+1)) successes,[])
