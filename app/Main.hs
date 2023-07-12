@@ -119,16 +119,18 @@ addToGrid' ((m,n,l),False) (SO grid rowcounts columncounts successes) =
             let (newrc,rowcounts') = Map.updateLookupWithKey (\_ a -> Just (a+1)) (m,n) rowcounts
                 (successes',ys1) = case newrc of
                     Just 6 -> let
-                        rows = findIndices (\i -> Map.lookup (m,i) rowcounts' == Just 5) [1..6]
-                        f :: Int -> (GridPosition,Bool)
-                        f t = case findIndex (\i -> Map.notMember (m,t+1,i) grid') [1..6] of
-                            Just i -> ((m,t+1,i+1),True)
-                            Nothing -> error "quirky"
-                     in (Map.insert m (Right n) successes,map f rows)
+                            rows = findIndices (\i -> Map.lookup (m,i) rowcounts' == Just 5) [1..6]
+                            f :: Int -> (GridPosition,Bool)
+                            f t = case findIndex (\i -> Map.notMember (m,t+1,i) grid') [1..6] of
+                                Just i -> ((m,t+1,i+1),True)
+                                Nothing -> error "quirky"
+                         in (Map.insert m (Right n) successes,map f rows)
                     Just 5 -> case Map.lookup m successes of
-                        Just (Right _) -> case findIndex (\i -> Map.notMember (m,n,i) grid') [1..6] of
-                            Just i -> (successes,[((m,n,i+1),True)])
-                            Nothing -> error "weird"
+                        Just (Right j) -> if j == n
+                            then (successes,[])
+                            else case findIndex (\i -> Map.notMember (m,n,i) grid') [1..6] of
+                                Just i -> (successes,[((m,n,i+1),True)])
+                                Nothing -> error "weird"
                         _ -> (successes,[])
                     _ -> (successes,[])
 
@@ -177,7 +179,7 @@ addToGrid' ((m,n,l),True) (SO grid rowcounts columncounts successes) =
                     Nothing -> (Map.insert m (Left 1) successes,[])
                     Just (Left k) -> if k == num_rows-2
                         then case findIndex (\r -> g $ Map.lookup (m,r) rowcounts') [1..num_rows] of
-                                 Just r -> (Map.insert m (Left num_rows) successes,map (\i -> ((m,r+1,i+1),False))
+                                 Just r -> (Map.insert m (Right (r+1)) successes,map (\i -> ((m,r+1,i+1),False))
                                      (findIndices (\i -> Map.notMember (m,r+1,i) grid') [1..6]))
                                  Nothing -> error "puzzling"
                         else (Map.insert m (Left (k+1)) successes,[])
